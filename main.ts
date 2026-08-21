@@ -174,6 +174,48 @@ namespace OLED {
         writeNum(n)
         newLine()
     }
+    //% block="show string $str size $size"
+    //% size.min=1 size.max=4 size.defl=2
+    //% weight=11
+    export function writeStringScaled(str: string, size: number) {
+        size = normalizeTextSize(size)
+        writeStringScaledWithoutNewLine(str, size)
+        newLineScaled(size)
+    }
+
+    //% block="show number $n size $size"
+    //% size.min=1 size.max=4 size.defl=2
+    //% weight=10
+    export function writeNumScaled(n: number, size: number) {
+        writeStringScaled(n.toString(), size)
+    }
+
+    function normalizeTextSize(size: number): number {
+        size = Math.floor(size)
+        if (size < 1) {
+            return 1
+        }
+        if (size > 4) {
+            return 4
+        }
+        return size
+    }
+
+    function writeStringScaledWithoutNewLine(str: string, size: number) {
+        for (let i = 0; i < str.length; i++) {
+            if (charX > displayWidth - 6 * size) {
+                newLineScaled(size)
+            }
+            drawCharScaled(charX, charY, str.charAt(i), size)
+            charX += 6 * size
+        }
+    }
+
+    function newLineScaled(size: number) {
+        charY += size
+        charX = xOffset
+    }
+
     //% block="insert newline"
     //% weight=4
     export function newLine() {
@@ -201,6 +243,46 @@ namespace OLED {
             pins.i2cWriteBuffer(chipAdress, line, false)
         }
 
+    }
+
+    function drawCharScaled(x: number, y: number, c: string, size: number) {
+        if (size === 1) {
+            drawChar(x, y, c)
+            return
+        }
+
+        command(SSD1306_SETCOLUMNADRESS)
+        command(x)
+        command(x + 6 * size - 1)
+        command(SSD1306_SETPAGEADRESS)
+        command(y)
+        command(y + size - 1)
+
+        let line = pins.createBuffer(2)
+        line[0] = 0x40
+        let charIndex = c.charCodeAt(0)
+
+        for (let page = 0; page < size; page++) {
+            for (let column = 0; column < 6; column++) {
+                let sourceByte = 0
+                if (column < 5) {
+                    sourceByte = font.getNumber(NumberFormat.UInt8BE, 5 * charIndex + column)
+                }
+
+                let scaledByte = 0
+                for (let bit = 0; bit < 8; bit++) {
+                    let sourceBit = Math.floor((page * 8 + bit) / size)
+                    if ((sourceByte & Math.pow(2, sourceBit)) !== 0) {
+                        scaledByte |= Math.pow(2, bit)
+                    }
+                }
+
+                line[1] = scaledByte
+                for (let repeat = 0; repeat < size; repeat++) {
+                    pins.i2cWriteBuffer(chipAdress, line, false)
+                }
+            }
+        }
     }
     function drawShape(pixels: Array<Array<number>>) {
         let x1 = displayWidth
